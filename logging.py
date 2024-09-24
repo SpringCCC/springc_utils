@@ -1,6 +1,6 @@
 import logging  
 
-def setup_logging(filename, level=logging.INFO):  
+def setup_logging(filename='train.log', level=logging.INFO):  
     """  
     配置logging，用于记录日志到指定的文件  
   

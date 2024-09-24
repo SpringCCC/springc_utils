@@ -6,5 +6,4 @@ from .imgs import *
 from .ious import *
 from .logging import *
 from .seed import *
-from .std_in import *
 from .time_decorator import *
