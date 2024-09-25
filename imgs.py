@@ -3,12 +3,13 @@ import numpy as np
 import random
 import numpy as np
 import cv2
-from .data_convert import toNumpy
+from .data_convert import *
 import random
 from PIL import Image
 
 def read_img(img_path):
-    return cv2.imdecode(np.fromfile(img_path, dtype=np.uint8), -1)
+    img = cv2.imdecode(np.fromfile(img_path, dtype=np.uint8), -1)
+    return img[:, :, ::-1] #保证全程都是rgb思维思考
 
 def save_img(img, sv_path, suffix=".jpg"):
     cv2.imencode(suffix, img)[1].tofile(sv_path)
@@ -73,27 +74,31 @@ def prepare_inference_input(x, size, m=0, std=255, is_center=True, pad_v=128, st
 def sc_rand(a=0, b=1):
     return np.random.rand()*(b-a) + a
 
-def distor_image(image, size, jitter=0.3):
+def distor_image(img, size, jitter=0.3):
     """
     扭曲图像，为了mosaic做准备
+    不管怎么扭曲，由于box是归一化的坐标，不用处理
     """
-    if isinstance(size, tuple) or isinstance(size, list):
-        size = size[0] 
-    iw, ih = image.size
-    flip = np.random.rand()<0.5
+    img = toNumpy(img)
+    if isinstance(size, (tuple, list)):
+        size = size[0]
+        
+    iw, ih = img.shape[1], img.shape[0]
+    flip = np.random.rand() < 0.5
     if flip:
-        image = image.transpose(Image.FLIP_LEFT_RIGHT)
-    #   对图像进行缩放并且进行长和宽的扭曲
-    new_ar = iw/ih * sc_rand(1-jitter,1+jitter) / sc_rand(1-jitter,1+jitter)
-    scale = sc_rand(.4, 1)
+        img = cv2.flip(img, 1)  # 水平翻转
+
+    # 对图像进行缩放并且进行长和宽的扭曲,此时长宽不再保持比例
+    new_ar = iw / ih * np.random.uniform(1 - jitter, 1 + jitter) / np.random.uniform(1 - jitter, 1 + jitter)
+    scale = np.random.uniform(0.4, 1)
     if new_ar < 1:
         nh = int(scale * size)
         nw = int(nh * new_ar)
     else:
         nw = int(scale * size)
         nh = int(nw / new_ar)
-    image = image.resize((nw, nh), Image.BICUBIC)
-    return image, flip
+    img = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_CUBIC)
+    return img, flip
 
 
 class RandomHSV:
@@ -119,15 +124,15 @@ class RandomHSV:
         self.vgain = vgain
 
     def __call__(self, img):
-        # 输入img：opencv读取的BGR通道图像
         """Applies random horizontal or vertical flip to an image with a given probability."""
+        img = toNumpy(img)
         r = np.random.uniform(-1, 1, 3) * [self.hgain, self.sgain, self.vgain] + 1  # random gains
-        hue, sat, val = cv2.split(cv2.cvtColor(img, cv2.COLOR_BRG2HSV))
+        hue, sat, val = cv2.split(cv2.cvtColor(img, cv2.COLOR_RGB2HSV))
         dtype = img.dtype  # uint8
         x = np.arange(0, 256, dtype=r.dtype)
         lut_hue = ((x * r[0]) % 180).astype(dtype)
         lut_sat = np.clip(x * r[1], 0, 255).astype(dtype)
         lut_val = np.clip(x * r[2], 0, 255).astype(dtype)
         im_hsv = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val)))
-        img = cv2.cvtColor(im_hsv, cv2.COLOR_HSV2BRG)  # no return needed
+        img = cv2.cvtColor(im_hsv, cv2.COLOR_HSV2RGB)  # no return needed
         return img
